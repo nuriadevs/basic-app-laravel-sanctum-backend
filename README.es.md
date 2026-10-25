@@ -8,7 +8,7 @@ Esta aplicación ha sido desarrollada con Laravel, ofrece operaciones CRUD y un 
 
 ## Entorno 🛠️
 
-- PHP 8.3 o superior
+- PHP 8.4 o superior
 - [Laravel 13](https://laravel.com/docs/13.x)
 - [Laravel Sanctum](https://laravel.com/docs/13.x/sanctum#main-content)
 - API

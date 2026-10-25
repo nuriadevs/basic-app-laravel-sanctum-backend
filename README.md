@@ -8,7 +8,7 @@ This application was developed with Laravel. It provides CRUD operations and a b
 
 ## Environment 🛠️
 
-- PHP 8.3 or higher
+- PHP 8.4 or higher
 
 - [Laravel 13](https://laravel.com/docs/13.x)
 
