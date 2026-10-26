@@ -1,0 +1,659 @@
+openapi: 3.0.0
+info:
+  title: Shop API (Laravel 13 + Sanctum)
+  description: >-
+    # Shop API
+
+
+    Coleccion de pruebas para la API de la tienda (Laravel 13, Sanctum y MySQL
+    8).
+
+
+    ## Puesta en marcha
+
+    1. Importa la base de datos de prueba: `mysql -u root -p <
+    shop_completo.sql`
+
+    2. Arranca la API: `php artisan serve` (por defecto en
+    `http://localhost:8000`).
+
+    3. Revisa la variable de coleccion **`baseUrl`** (pestana *Variables*).
+    Incluye el prefijo `/api`.
+
+    4. Lanza **Autenticacion > Login (admin)**: el token se guarda solo en
+    `{{token}}`.
+
+
+    ## Variables de coleccion
+
+    | Variable | Uso |
+
+    |---|---|
+
+    | `baseUrl` | URL base de la API, p. ej. `http://localhost:8000/api` |
+
+    | `token` | Token Bearer del admin. Se rellena con *Login (admin)* |
+
+    | `tokenCliente` | Token del cliente (*Login (cliente)*), solo para la
+    prueba de acceso denegado |
+
+    | `productId` | Primer producto de *Listar productos* |
+
+    | `createdProductId` | Producto creado en *Crear producto* |
+
+    | `orderId` | Pedido usado en *Ver pedido* |
+
+
+    ## Usuarios de prueba
+
+    | Email | Contrasena | Rol | Activo |
+
+    |---|---|---|---|
+
+    | laura@example.com | `Admin1234!` | admin | si |
+
+    | carlos@example.com | `Customer1234!` | customer | si |
+
+    | ana, david, javier, lucia `@example.com` | `Customer1234!` | customer | si
+    |
+
+    | marta@example.com | `Customer1234!` | customer | **no** |
+
+
+    ## Cambios de esta version
+
+    - `users.email_verified_at` (nullable) existe en la base de datos, pero la
+    verificacion de email **aun no esta implementada**: los usuarios de prueba
+    tienen `NULL` y el registro no la envia. Si tu API la expone, vendra como
+    `null`.
+
+    - `order_details.unit_price` guarda el precio del producto en el momento de
+    la compra (`total_amount = unit_price * quantity`). Las pruebas de pedidos
+    lo comprueban.
+
+    - No ejecutes `php artisan migrate` sobre la base creada con el script SQL
+    (no existe la tabla `migrations`).
+
+
+    ## Autenticacion
+
+    Todas las peticiones salvo registro y login usan **Bearer Token**
+    (`Authorization: Bearer {{token}}`), configurado a nivel de coleccion. Envia
+    siempre `Accept: application/json`.
+
+
+    ## Importante: ajusta las rutas a tu API
+
+    Las rutas, nombres de campos y formas de respuesta de esta coleccion
+    (`/auth/register`, `/auth/login`, `/products`, `/orders`, `/users`...) son
+    las convenciones habituales y **pueden no coincidir exactamente con las
+    tuyas**. Comprueba `php artisan route:list --path=api` y edita las URLs o
+    cuerpos que difieran. Los tests aceptan varias formas de respuesta (`token`,
+    `data.token`, `access_token`).
+
+
+    ## Ejecutar todo
+
+    Puedes usar el *Collection Runner* en este orden: Autenticacion, Productos,
+    Pedidos, Usuarios. Las peticiones marcadas *(admin)* necesitan el token de
+    administrador; las *(debe fallar)* son pruebas negativas.
+  version: 1.0.0
+servers:
+  - url: http://{{baseurl}}
+components:
+  securitySchemes:
+    noauthAuth:
+      type: http
+      scheme: noauth
+    bearerAuth:
+      type: http
+      scheme: bearer
+security:
+  - bearerAuth: []
+tags:
+  - name: 1. Autenticacion
+    description: >-
+      Registro, login y logout con Laravel Sanctum. Los *Login* guardan el token
+      en `{{token}}`.
+  - name: 2. Productos
+    description: >-
+      CRUD de productos. Lectura para usuarios autenticados; crear, editar y
+      borrar solo para **admin**.
+  - name: 3. Pedidos
+    description: Pedidos del usuario autenticado y sus lineas (`order_details`).
+  - name: 4. Usuarios (admin)
+    description: Gestion de usuarios, restringida al rol `admin`.
+  - name: 5. Cerrar sesion
+paths:
+  /auth/register:
+    post:
+      tags:
+        - 1. Autenticacion
+      summary: Registro
+      description: >-
+        Crea un usuario nuevo con rol `customer`.
+
+
+        **Auth:** no requiere token.
+
+
+        **Campos obligatorios:** `name`, `first_surname`, `second_surname`,
+        `email`, `password`.
+
+        El resto (`address`, `phone_number`, `birthdate`, `dni`, `postal_code`,
+        `city`) son opcionales.
+
+
+        **Respuestas:** `201` creado, `422` error de validacion (por ejemplo,
+        email ya registrado).
+
+
+        > Cambia el email en cada ejecucion: `email` es unico en la base de
+        datos.
+
+
+        > `email_verified_at` no se envia: queda en `NULL` (verificacion de
+        email pendiente).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: Nuevo
+                first_surname: Usuario
+                second_surname: Prueba
+                email: nuevo.{{$timestamp}}@example.com
+                password: Customer1234!
+                password_confirmation: Customer1234!
+                phone_number: '600999888'
+                birthdate: '1999-01-15'
+                dni: '{{dni}}'
+                postal_code: '29001'
+                city: Malaga
+                role: customer
+                is_active: true
+      security:
+        - noauthAuth: []
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '201':
+          description: Created
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                message: Usuario registrado
+                user:
+                  id: 8
+                  name: Nuevo
+                  email: nuevo@example.com
+                  role: customer
+  /auth/login:
+    post:
+      tags:
+        - 1. Autenticacion
+      summary: Login (admin)
+      description: >-
+        Inicia sesion con el usuario **administrador** de la base de datos de
+        prueba.
+
+
+        **Auth:** no requiere token. **Guarda el token** automaticamente en
+        `{{token}}`.
+
+
+        Credenciales: `laura@example.com` / `Admin1234!`
+
+
+        Usa esta peticion antes de probar las rutas que exigen rol admin (crear,
+        editar o borrar productos, listar usuarios).
+
+
+        **Respuestas:** `200` correcto, `401/422` credenciales incorrectas.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                email: laura@example.com
+                password: Admin1234!
+      security:
+        - noauthAuth: []
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: OK
+          headers:
+            Content-Type:
+              schema:
+                type: string
+                example: application/json
+          content:
+            application/json:
+              schema:
+                type: object
+              example:
+                token: 1|abc123...
+                user:
+                  id: 1
+                  name: Laura
+                  email: laura@example.com
+                  role: admin
+  /user:
+    get:
+      tags:
+        - 1. Autenticacion
+      summary: Usuario autenticado
+      description: >-
+        Devuelve el usuario dueno del token actual.
+
+
+        **Auth:** Bearer `{{token}}`.
+
+
+        **Respuestas:** `200` correcto, `401` si falta el token o ha caducado.
+
+
+        `email_verified_at` sera `null` hasta que se implemente la verificacion
+        de email.
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /products:
+    get:
+      tags:
+        - 2. Productos
+      summary: Listar productos
+      description: >-
+        Lista todos los productos. Puede estar paginado segun tu controlador.
+
+
+        **Auth:** Bearer `{{token}}` (o publica, segun tus rutas).
+
+
+        Los datos de prueba incluyen 12 productos; el id 11 (Altavoz Bluetooth)
+        tiene `stock = 0`, ideal para probar errores de stock insuficiente.
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+        - 2. Productos
+      summary: Crear producto (admin)
+      description: >-
+        Crea un producto.
+
+
+        **Auth:** Bearer de **admin** (haz *Login (admin)* antes).
+
+
+        **Campos:** `name` (obligatorio), `description`, `price` (obligatorio,
+        >= 0), `stock` (entero >= 0).
+
+
+        **Respuestas:** `201` creado, `401` sin token, `403` si no eres admin,
+        `422` validacion.
+
+
+        Guarda el id del producto creado en `{{createdProductId}}`.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: Producto de prueba
+                description: Creado desde Postman
+                price: 19.99
+                stock: 10
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /products/{productId}:
+    get:
+      tags:
+        - 2. Productos
+      summary: Ver producto
+      description: >-
+        Devuelve un producto por id. Usa la variable `{{productId}}` (se rellena
+        sola tras *Listar productos*).
+
+
+        **Respuestas:** `200`, `404` si no existe.
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+        - name: productId
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /products/{createdProductId}:
+    put:
+      tags:
+        - 2. Productos
+      summary: Actualizar producto (admin)
+      description: |-
+        Actualiza el producto creado en la peticion anterior.
+
+        **Auth:** Bearer de **admin**.
+
+        **Respuestas:** `200`, `403` (no admin), `404`, `422`.
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                name: Producto actualizado
+                description: Editado desde Postman
+                price: 24.99
+                stock: 5
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+        - name: createdProductId
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    delete:
+      tags:
+        - 2. Productos
+      summary: Eliminar producto (admin)
+      description: >-
+        Elimina el producto creado.
+
+
+        **Auth:** Bearer de **admin**.
+
+
+        **Respuestas:** `200/204`, `403`, `404`.
+
+
+        > Los productos con pedidos (ids 1 a 10 y 12 de los datos de prueba)
+        **no se pueden borrar**: la clave foranea `order_details.product_id` es
+        `ON DELETE RESTRICT`. Prueba a borrar el id 1 para ver ese error.
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+        - name: createdProductId
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /orders:
+    get:
+      tags:
+        - 3. Pedidos
+      summary: Listar mis pedidos
+      description: >-
+        Devuelve los pedidos del usuario autenticado (un admin puede ver todos,
+        segun tu implementacion).
+
+
+        **Auth:** Bearer `{{token}}`.
+
+
+        Con `carlos@example.com` deberias ver los pedidos 1 y 2; con
+        `ana@example.com`, los pedidos 3 y 8.
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+    post:
+      tags:
+        - 3. Pedidos
+      summary: Crear pedido (producto sin stock)
+      description: >-
+        Prueba negativa: el producto 11 tiene `stock = 0`. **Esperado:** `422`
+        (o el codigo que uses para stock insuficiente).
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              example:
+                user_id: 1
+                order_details:
+                  - product_id: 11
+                    quantity: 1
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+        - name: Content-Type
+          in: header
+          schema:
+            type: string
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /orders/{orderId}:
+    get:
+      tags:
+        - 3. Pedidos
+      summary: Ver pedido
+      description: >-
+        Devuelve un pedido con sus lineas (`data.order_details.products`).
+
+
+        **Respuestas:** `200`, `404` si el pedido no existe.
+
+
+        Cada linea incluye `unit_price` (precio en el momento de la compra) y
+        `total_amount = unit_price * quantity`.
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+        - name: orderId
+          in: path
+          schema:
+            type: string
+          required: true
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /users:
+    get:
+      tags:
+        - 4. Usuarios (admin)
+      summary: Listar usuarios (como cliente, debe fallar)
+      description: >-
+        Prueba negativa de autorizacion: haz *Login (cliente)* y lanza esta
+        peticion. **Esperado:** `403`.
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
+  /auth/logout:
+    post:
+      tags:
+        - 5. Cerrar sesion
+      summary: Logout
+      description: >-
+        Revoca el token actual en `personal_access_tokens`.
+
+
+        **Auth:** Bearer `{{token}}`.
+
+
+        Despues de esta peticion el token deja de ser valido: vuelve a hacer
+        login.
+      requestBody:
+        content: {}
+      parameters:
+        - name: Accept
+          in: header
+          schema:
+            type: string
+          description: >-
+            Imprescindible en Laravel: sin esta cabecera, los errores de
+            validacion o autenticacion devuelven HTML o redirigen en vez de
+            JSON.
+          example: application/json
+      responses:
+        '200':
+          description: Successful response
+          content:
+            application/json: {}
